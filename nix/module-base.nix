@@ -14,19 +14,23 @@ with lib;
       '';
     };
 
-    configfiles = mkOption {
-      type = types.listOf types.path;
-      default = [];
-      example = "[ my-config.kbd ]";
+    configFiles = mkOption {
+      type = types.attrsOf types.path;
+      default = {};
+      example = lib.literalExample ''
+        { my-config = ./my-config.kbd; }
+      '';
       description = ''
         Config files for dedicated kmonad instances.
       '';
     };
 
-    optionalconfigs = mkOption {
-      type = types.listOf types.path;
-      default = [];
-      example = "[ optional.kbd ]";
+    optionalConfigs = mkOption {
+      type = types.attrsOf types.path;
+      default = {};
+      example = lib.literalExample ''
+        { optional = ./optional.kbd; }
+      '';
       description = ''
         Config files for dedicated kmonad instances which may not always be present.
       '';
@@ -35,7 +39,7 @@ with lib;
     package = mkOption {
       type = types.package;
       default = pkgs.kmonad;
-      example = "pkgs.kmonad";
+      example = lib.literalExample "pkgs.kmonad";
       description = ''
         The kmonad package.
       '';
@@ -56,7 +60,7 @@ with lib;
     systemd = with lib; with builtins;
       let
         # If only one config file is supplied, unify all kmonad units under a target
-        make-group = (length cfg.configfiles + length cfg.optionalconfigs) > 1;
+        make-group = (length (attrNames cfg.configFiles) + length (attrNames cfg.optionalConfigs)) > 1;
 
         # All systemd units require the graphics target directly (if a single config),
         # or indirectly (via kmonad.target).
@@ -73,13 +77,7 @@ with lib;
           inherit wantedBy;
         };
 
-        mk-kmonad-service = { is-optional }: kbd-path:
-          let
-            # prettify the service's name by taking the config filename...
-            conf-file = lists.last (strings.splitString "/" (toString kbd-path));
-            # ...and dropping the extension
-            conf-name = lists.head (strings.splitString "." conf-file);
-          in {
+        mk-kmonad-service = { is-optional }: conf-name: kbd-path: {
           name = "kmonad-" +conf-name;
           value = {
             enable = true;
@@ -102,9 +100,9 @@ with lib;
                 else { inherit wantedBy; });
         };
 
-        required-units = map (mk-kmonad-service { is-optional=false; }) cfg.configfiles;
+        required-units = mapAttrsToList (mk-kmonad-service { is-optional=false; }) cfg.configFiles;
 
-        optional-units = map (mk-kmonad-service { is-optional=true;  }) cfg.optionalconfigs;
+        optional-units = mapAttrsToList (mk-kmonad-service { is-optional=true;  }) cfg.optionalConfigs;
 
       in
         mkIf cfg.enable ({
@@ -116,4 +114,13 @@ with lib;
               { targets.kmonad = mk-kmonad-target (required-units ++ optional-units); })
           );
   };
+
+imports = [
+    (mkRemovedOptionModule [ "configfiles" ] ''
+      This option was replaced by an attribute set at 'services.kmonad.configFiles'.";
+    '')
+    (mkRemovedOptionModule [ "optionalconfigs" ] ''
+      This option was replaced by an attribute set at 'services.kmonad.optionalConfigs'.";
+    '')
+  ];
 }
